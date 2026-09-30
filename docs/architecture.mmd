@@ -1,0 +1,60 @@
+flowchart TB
+  URL([Website URL]) --> A
+
+  subgraph A[1 · Analyze  — Playwright, no LLM]
+    direction TB
+    A1[Load page desktop 1440px<br/>dismiss cookie banners · auto-scroll lazy content] --> A2[In-page extractor<br/>section segmentation · annotated DOM<br/>computed styles · design tokens · nav]
+    A2 --> A3[Screenshots<br/>full page + per-section crops]
+    A2 --> A4[Assets → public/media<br/>Google-Fonts lookup]
+    A1 --> A5[Mobile pass 390px<br/>screenshot · nav-collapse detection]
+  end
+
+  A --> P
+
+  subgraph P[2 · Plan — 1 vision call]
+    P1[Heuristic theme + section names<br/>from measured tokens] --> P2[LLM planner<br/>screenshot tiles + outline → JSON<br/>zod-validated, heuristic fallback]
+  end
+
+  P --> G
+
+  subgraph G[3 · Generate — 1 call per section, in parallel]
+    G1[theme.css tokens · App.tsx · index.html]
+    G2[Section N: crop + annotated DOM + tokens<br/>→ Navbar.tsx, Hero.tsx, …]
+    G3[Deterministic DOM→JSX compiler<br/>offline mode / safety net]
+  end
+
+  G --> V
+
+  subgraph V[4 · Validate & Repair loop]
+    V0[Sanitizer — free fixes<br/>unknown lucide icons, next/* imports, paths] --> V1[vite build]
+    V1 -->|ok| V2[Headless browser run<br/>SectionBoundary errors · page errors · empty page]
+    V1 -->|errors per file| R
+    V2 -->|runtime error| L[Localize: tsc / render sections one-by-one]
+    L --> R[LLM repair of failing files<br/>fast model → main model, ≤3 rounds]
+    R --> V0
+    R -->|budget exhausted| F[Swap section for compiled fallback]
+    F --> V1
+    V2 -->|pass| T[tsc type check → optional fix, revert if it breaks]
+  end
+
+  V --> S
+
+  subgraph S[5 · Visual score  — optional refine]
+    S1[Screenshot generated site<br/>desktop + mobile + per section] --> S2[Pixel similarity vs original]
+    S2 -->|--refine| S3[Worst sections: original vs render → LLM rewrite<br/>kept only if score improves]
+  end
+
+  S --> PV[Local preview<br/>Studio iframe · desktop / tablet / mobile · side-by-side]
+
+  PV --> M
+
+  subgraph M[6 · Modify — natural language]
+    M0{Fast path?<br/>colour · sticky nav · remove section} -->|yes, $0| M3
+    M0 -->|no| M1[Plan: fast model picks files to read]
+    M1 --> M2[Edit: main model returns &lt;file&gt; / &lt;delete&gt; ops]
+    M2 --> M3[Apply → Validate & Repair loop]
+    M3 -->|fail| RB[Roll back to last version]
+    M3 -->|ok| VS[Snapshot vN · undo available]
+  end
+
+  VS --> PV

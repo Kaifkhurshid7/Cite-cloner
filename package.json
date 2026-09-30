@@ -1,0 +1,39 @@
+{
+  "name": "site-cloner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI agent that analyzes a public website and recreates its frontend as a React + TypeScript + Tailwind project, then edits it with natural-language prompts.",
+  "type": "module",
+  "scripts": {
+    "setup": "npm install && npm --prefix template install && npx playwright install chromium",
+    "build:studio": "vite build --config studio/vite.config.ts",
+    "start": "npm run build:studio && tsx src/server/index.ts",
+    "server": "tsx src/server/index.ts",
+    "dev:studio": "vite --config studio/vite.config.ts",
+    "clone": "tsx src/cli.ts clone",
+    "modify": "tsx src/cli.ts modify",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "fixtures": "tsx scripts/serve-fixtures.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "openai": "^4.100.0",
+    "playwright": "1.56.0",
+    "sharp": "^0.34.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.4.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5"
+  }
+}

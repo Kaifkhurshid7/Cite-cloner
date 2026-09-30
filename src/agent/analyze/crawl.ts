@@ -167,7 +167,7 @@ async function resolveFonts(ctx: BrowserContext, ex: Extraction): Promise<string
 export async function analyzeWebsite(url: string, ws: Workspace, emit: Emit): Promise<Analysis> {
   const browser = await launchBrowser();
   try {
-    // ---------------- desktop pass
+    // desktop pass
     const ctx = await browser.newContext({ viewport: config.desktop, userAgent: UA, deviceScaleFactor: 1, locale: 'en-US' });
     const page = await ctx.newPage();
     emit({ stage: 'analyze', level: 'info', message: `Loading ${url} (desktop ${config.desktop.width}px)` });
@@ -202,7 +202,7 @@ export async function analyzeWebsite(url: string, ws: Workspace, emit: Emit): Pr
     const fontHead = await resolveFonts(ctx, ex);
     await ctx.close();
 
-    // ---------------- mobile pass (for responsive intent)
+    // mobile pass (for responsive intent)
     const mctx = await browser.newContext({ viewport: config.mobile, userAgent: MOBILE_UA, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
     const mpage = await mctx.newPage();
     emit({ stage: 'analyze', level: 'info', message: `Loading mobile view (${config.mobile.width}px)` });

@@ -80,7 +80,7 @@ export async function generateSection(sec: SectionPlan, plan: SitePlan, a: Analy
   }
 }
 
-/** Tiny promise pool – bounded parallelism for API calls. */
+/** Runs async tasks with a bounded number of concurrent workers. */
 export async function pool<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let next = 0;

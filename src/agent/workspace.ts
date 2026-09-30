@@ -166,8 +166,7 @@ export class Workspace {
     return run;
   }
 
-  // ---- version history (snapshot of src/ + index.html) --------------------
-
+  // version history (snapshot of src/ + index.html)
   async snapshot(label: string): Promise<number> {
     const v = ((await this.readMeta()).versions.at(-1)?.v ?? 0) + 1;
     const dst = path.join(this.dir, '.history', `v${v}`);

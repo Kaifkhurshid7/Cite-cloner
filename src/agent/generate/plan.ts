@@ -42,8 +42,7 @@ export const SitePlanSchema = z.object({
 });
 export type SitePlan = z.infer<typeof SitePlanSchema>;
 
-// ---------------------------------------------------------------- heuristics
-
+// heuristics
 function luminance(h: string) {
   const n = h.replace('#', '').slice(0, 6);
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16) / 255);
@@ -137,8 +136,7 @@ export function normalizeSections(sections: SectionPlan[]): SectionPlan[] {
   });
 }
 
-// ---------------------------------------------------------------- planner
-
+// planner
 export async function planSite(a: Analysis, llm: LLM, emit: Emit): Promise<SitePlan> {
   const baseTheme = heuristicTheme(a);
   const baseSections = heuristicSections(a);

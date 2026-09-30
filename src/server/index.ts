@@ -19,7 +19,7 @@ function ws(req: Request): Workspace {
 const wrap = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) =>
   fn(req, res).catch(next);
 
-// ------------------------------------------------------------------ API
+// REST + SSE API
 app.get('/api/config', (_req, res) => {
   const p = config.provider;
   const model = p === 'anthropic' ? config.anthropic : p === 'openai' ? config.openai : null;
@@ -94,7 +94,7 @@ app.get(
   }),
 );
 
-// ------------------------------------------------------------------ static
+// Static assets and previews
 const noCache = { etag: false, lastModified: false, setHeaders: (r: Response) => r.setHeader('cache-control', 'no-store') };
 app.use('/preview/:id', (req, res, next) => {
   if (!ID.test(req.params.id)) return res.status(404).end();

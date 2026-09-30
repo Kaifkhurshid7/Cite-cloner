@@ -51,13 +51,13 @@ export async function cloneWebsite(url: string, emit: Emit, opts: CloneOptions =
   }
 
   try {
-    // 1. ANALYZE ---------------------------------------------------------------------------
+    // 1. ANALYZE
     await ws.updateMeta({ status: 'analyzing' });
     emit({ stage: 'analyze', level: 'info', message: `Workspace ${ws.id} · provider: ${llm.provider ? `${llm.provider.name} (${llm.provider.modelFor('main')})` : 'offline heuristics'}` });
     const analysis = await analyzeWebsite(url, ws, emit);
     if (!analysis.sections.length) throw new Error('No visible content found on the page');
 
-    // 2. PLAN -------------------------------------------------------------------------------
+    // 2. PLAN
     await ws.updateMeta({ status: 'generating', title: analysis.title || ws.id });
     const plan = await planSite(analysis, llm, emit);
     await fs.writeFile(path.join(ws.captureDir, 'plan.json'), JSON.stringify(plan, null, 2));
@@ -65,7 +65,7 @@ export async function cloneWebsite(url: string, emit: Emit, opts: CloneOptions =
     emit({ stage: 'plan', level: 'info', message: 'Wrote design tokens → src/theme.css', data: { theme: plan.theme } });
     await reportCost();
 
-    // 3. GENERATE (parallel, one call per section) --------------------------------------------
+    // 3. GENERATE (parallel, one call per section)
     emit({ stage: 'generate', level: 'info', message: `Generating ${plan.sections.length} section components (concurrency ${config.concurrency})` });
     const generated = await pool(plan.sections, config.concurrency, async (sec) => {
       const g = await generateSection(sec, plan, analysis, llm);
@@ -83,7 +83,7 @@ export async function cloneWebsite(url: string, emit: Emit, opts: CloneOptions =
       sections: plan.sections.map((s) => ({ name: s.name, role: s.role, description: s.description, fallback: generated.find((g) => g.name === s.name)?.fallback })),
     });
 
-    // 4. VALIDATE + REPAIR ------------------------------------------------------------------------
+    // 4. VALIDATE + REPAIR
     await ws.updateMeta({ status: 'validating' });
     const byName = new Map(plan.sections.map((s) => [s.name, s]));
     const fallbackFor = (name: string) => {
@@ -101,7 +101,7 @@ export async function cloneWebsite(url: string, emit: Emit, opts: CloneOptions =
       if (!result.ok) throw new Error(`Generated site does not build: ${JSON.stringify(result.lastErrors).slice(0, 500)}`);
     }
 
-    // 5. VISUAL SCORE (+ optional refinement) --------------------------------------------------
+    // 5. VISUAL SCORE (+ optional refinement)
     let score = await scoreSite(ws, plan, analysis);
     emit({ stage: 'visual', level: 'info', message: `Visual similarity – desktop ${(score.desktop * 100).toFixed(0)}%, mobile ${(score.mobile * 100).toFixed(0)}%`, data: { score } });
 

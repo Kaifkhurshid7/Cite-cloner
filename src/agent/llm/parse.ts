@@ -23,7 +23,7 @@ export function extractJson<T = unknown>(text: string): T {
   try {
     return JSON.parse(slice) as T;
   } catch {
-    // common model slip: trailing commas
+    // models occasionally emit trailing commas
     return JSON.parse(slice.replace(/,\s*([}\]])/g, '$1')) as T;
   }
 }

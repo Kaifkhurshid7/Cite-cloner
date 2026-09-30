@@ -23,7 +23,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <a href="#/" className="brand">
-          <span className="logo">◧</span> Site Cloner <span className="muted">Studio</span>
+          <span className="logo">S</span> Site Cloner <span className="muted">Studio</span>
         </a>
         {cfg && (
           <span className={`pill ${cfg.provider === 'offline' ? 'warn' : ''}`} title="LLM provider">

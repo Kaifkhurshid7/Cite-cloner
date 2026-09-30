@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, type AgentEvent, type Project, type ServerConfig } from './api';
 
-// ------------------------------------------------------------------ routing (hash based)
+// routing (hash based)
 function useRoute() {
   const [hash, setHash] = useState(window.location.hash);
   useEffect(() => {
@@ -36,7 +36,7 @@ export default function App() {
   );
 }
 
-// ------------------------------------------------------------------ home
+// home
 function Home({ cfg }: { cfg: ServerConfig | null }) {
   const [url, setUrl] = useState('');
   const [refine, setRefine] = useState(false);
@@ -119,7 +119,7 @@ function StatusBadge({ status }: { status: Project['status'] }) {
   return <span className={`badge ${status}`}>{status}</span>;
 }
 
-// ------------------------------------------------------------------ project view
+// project view
 const STAGES = ['analyze', 'plan', 'generate', 'validate', 'visual', 'done'] as const;
 const DEVICES = { desktop: 1440, tablet: 768, mobile: 390 } as const;
 type Device = keyof typeof DEVICES;

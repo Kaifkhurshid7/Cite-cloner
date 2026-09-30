@@ -5,7 +5,7 @@ import sharp from 'sharp';
  * Perceptual-ish similarity between two screenshots in [0,1].
  * Both images are downscaled + blurred (so 1-2px offsets and anti-aliasing do not matter), the candidate is
  * resized onto the reference's grid, then we take 1 - mean absolute RGB difference.
- * Cheap (no model call) and good enough to rank sections for the refinement loop and to report progress.
+ * Needs no model call and is accurate enough to rank sections for the refinement loop and to report progress.
  */
 export async function similarity(referenceFile: string, candidateFile: string, width = 160): Promise<number> {
   try {

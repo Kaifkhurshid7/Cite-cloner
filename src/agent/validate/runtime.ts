@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
-import type { Browser } from 'playwright';
+import type { Browser, Page } from 'playwright';
 import { launchBrowser } from '../analyze/crawl.js';
 import { config } from '../config.js';
 import type { Workspace } from '../workspace.js';
@@ -12,6 +12,23 @@ const MIME: Record<string, string> = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.avif': 'image/avif', '.ico': 'image/x-icon',
   '.json': 'application/json', '.woff2': 'font/woff2',
 };
+
+/**
+ * Writes a screenshot through a buffer with retries. On Windows the studio may be reading the previous
+ * capture while a new one is written, which makes a direct write fail with EBUSY/UNKNOWN.
+ */
+async function saveShot(page: Page, file: string, options: Parameters<Page['screenshot']>[0]): Promise<void> {
+  const buffer = await page.screenshot({ ...options, path: undefined });
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fs.writeFile(file, buffer);
+      return;
+    } catch (e) {
+      if (attempt >= 5) throw e;
+      await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+    }
+  }
+}
 
 /** Minimal static server for dist/ (ES modules cannot be loaded from file://). */
 export async function serveDir(dir: string): Promise<{ url: string; close: () => Promise<void> }> {
@@ -83,13 +100,13 @@ export async function runtimeCheck(ws: Workspace, browser?: Browser): Promise<Ru
     });
     const desktop = path.join(ws.captureDir, 'generated-desktop.jpg');
     const h = await page.evaluate(() => document.documentElement.scrollHeight);
-    await page.screenshot({ path: desktop, type: 'jpeg', quality: 70, fullPage: true, clip: { x: 0, y: 0, width: config.desktop.width, height: Math.min(h, 14000) } });
+    await saveShot(page, desktop, { type: 'jpeg', quality: 70, fullPage: true, clip: { x: 0, y: 0, width: config.desktop.width, height: Math.min(h, 14000) } });
     // per-section crops for the visual refinement loop
     for (const [name, r] of Object.entries(sectionRects)) {
       if (r.h < 2) continue;
-      await page
-        .screenshot({ path: path.join(ws.captureDir, `gen-${name}.jpg`), type: 'jpeg', quality: 70, fullPage: true, clip: { x: 0, y: r.y, width: config.desktop.width, height: Math.min(r.h, 2400) } })
-        .catch(() => {});
+      await saveShot(page, path.join(ws.captureDir, `gen-${name}.jpg`), {
+        type: 'jpeg', quality: 70, fullPage: true, clip: { x: 0, y: r.y, width: config.desktop.width, height: Math.min(r.h, 2400) },
+      }).catch(() => {});
     }
     await ctx.close();
 
@@ -99,7 +116,7 @@ export async function runtimeCheck(ws: Workspace, browser?: Browser): Promise<Ru
     await mpage.waitForTimeout(400);
     const mobile = path.join(ws.captureDir, 'generated-mobile.jpg');
     const mh = await mpage.evaluate(() => document.documentElement.scrollHeight);
-    await mpage.screenshot({ path: mobile, type: 'jpeg', quality: 70, fullPage: true, clip: { x: 0, y: 0, width: config.mobile.width, height: Math.min(mh, 14000) } });
+    await saveShot(mpage, mobile, { type: 'jpeg', quality: 70, fullPage: true, clip: { x: 0, y: 0, width: config.mobile.width, height: Math.min(mh, 14000) } });
     const overflow = await mpage.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     if (overflow > 8) pageErrors.push(`[layout] horizontal overflow of ${overflow}px on mobile`);
     await mctx.close();

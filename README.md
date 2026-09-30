@@ -51,6 +51,26 @@ npm run fixtures        # serves http://localhost:5055/{saas,bakery,portfolio}/
 
 Then clone `http://localhost:5055/bakery/` from the studio or the CLI.
 
+## Results
+
+The screenshots below are from cloning the bundled `saas` test site (`http://localhost:5055/saas/`) in offline mode, with no API key and no LLM calls. The run took about 15 seconds and scored 92% visual similarity on desktop and 82% on mobile.
+
+**Original vs generated, side by side**
+
+![Side by side: original vs generated](docs/screenshots/03-side-by-side.png)
+
+**Studio home and clone result**
+
+| Home | Result with agent log |
+|---|---|
+| ![Home](docs/screenshots/01-home.png) | ![Clone result](docs/screenshots/02-clone-result.png) |
+
+**Responsive output (mobile 390px)**
+
+![Mobile](docs/screenshots/04-mobile.png)
+
+With an API key, the model generates each section from its screenshot and DOM, which gives more faithful, cleaner components than the offline compiler.
+
 ## Configuration
 
 All settings live in `.env` (see [.env.example](.env.example)).

@@ -136,6 +136,19 @@ function ProjectView({ id }: { id: string }) {
 
   const refresh = useCallback(() => api.project(id).then(setProject).catch(() => {}), [id]);
 
+  // Jobs that finish instantly can emit 'idle' before the request returns, so sync with the server instead of assuming a job is running.
+  const syncRunning = useCallback(
+    () =>
+      api
+        .project(id)
+        .then((p) => {
+          setProject(p);
+          setRunning(Boolean(p.running));
+        })
+        .catch(() => {}),
+    [id],
+  );
+
   useEffect(() => {
     refresh();
     const es = new EventSource(`/api/projects/${id}/events`);
@@ -212,7 +225,7 @@ function ProjectView({ id }: { id: string }) {
             {tab === 'sections' && <Sections project={project} />}
             {tab === 'code' && <CodeBrowser id={id} version={previewKey} />}
           </div>
-          <Chat id={id} project={project} running={running} disabled={!ready} onSent={() => setRunning(true)} />
+          <Chat id={id} project={project} running={running} disabled={!ready} onSent={syncRunning} />
         </aside>
 
         <section className="stage">

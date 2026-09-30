@@ -98,7 +98,7 @@ export async function modifyWebsite(id: string, instruction: string, emit: Emit)
       if (!llm.available) {
         return finish({ ok: false, summary: 'No LLM configured – only simple edits (colours, sticky navbar, remove section) are supported offline.', changed: [] });
       }
-// step 1: choose files to read (cheap model)
+      // step 1: choose files to read (cheap model)
       const man = await manifest(ws);
       const planRes = await llm.complete({
         label: 'modify:plan',
@@ -120,7 +120,7 @@ export async function modifyWebsite(id: string, instruction: string, emit: Emit)
         if (await ws.exists(f)) contents.push(`<current path="${f}">\n${await ws.read(f)}\n</current>`);
       }
 
-// step 2: edit (main model)
+      // step 2: edit (main model)
       const siblingStyle = (await ws.listSource('src/components/sections')).slice(0, 1);
       const editRes = await llm.complete({
         label: 'modify:edit',
@@ -150,7 +150,7 @@ export async function modifyWebsite(id: string, instruction: string, emit: Emit)
     await pruneApp(ws);
     emit({ stage: 'modify', level: 'info', message: `Changed ${ops.map((o) => `${o.action === 'delete' ? '−' : '±'} ${o.path}`).join(', ')}` });
 
-// validate (repair allowed, no fallbacks – on failure we roll back)
+    // validate (repair allowed, no fallbacks – on failure we roll back)
     const result = await buildValidateRepair(ws, { llm, emit, maxRounds: llm.available ? 2 : 0, fixTypes: false });
     if (!result.ok) {
       await ws.restore(lastGood);

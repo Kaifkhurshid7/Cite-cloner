@@ -1,6 +1,9 @@
 import fs from 'node:fs/promises';
 import sharp from 'sharp';
 
+// Windows keeps cached files locked, which makes later writes to the same screenshot fail.
+sharp.cache(false);
+
 /**
  * Perceptual-ish similarity between two screenshots in [0,1].
  * Both images are downscaled + blurred (so 1-2px offsets and anti-aliasing do not matter), the candidate is

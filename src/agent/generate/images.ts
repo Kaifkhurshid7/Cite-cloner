@@ -1,4 +1,6 @@
 import sharp from 'sharp';
+
+sharp.cache(false);
 import type { ContentPart } from '../llm/types.js';
 
 /**

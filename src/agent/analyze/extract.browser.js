@@ -1,6 +1,5 @@
-/* eslint-disable */
-// Runs INSIDE the target page (via Playwright page.evaluate). Plain JS, no imports, no closures
-// over Node code. Returns a JSON-serializable description of the page.
+// Runs inside the target page via Playwright page.evaluate. Plain JS with no imports and no
+// references to Node-side code. Returns a JSON-serializable description of the page.
 (function extract(opts) {
   var VH = window.innerHeight;
   var VW = window.innerWidth;
@@ -8,7 +7,7 @@
   var MAX_SECTIONS = opts.maxSections || 18;
   var SKIP_TAGS = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEMPLATE: 1, META: 1, LINK: 1, HEAD: 1, BR: 0 };
 
-  // ---------------------------------------------------------------- helpers
+  // helpers
   function toHex(c) {
     if (!c) return null;
     var m = c.match(/rgba?\(([^)]+)\)/);
@@ -52,7 +51,7 @@
     return cleanText(t);
   }
 
-  // ---------------------------------------------------------------- assets
+  // assets
   var assets = [];
   var assetByUrl = {};
   function addAsset(url, kind, extra) {
@@ -74,7 +73,7 @@
     return m ? m[1] : null;
   }
 
-  // ---------------------------------------------------------------- serializer
+  // serializer
   var budget = 0;
   function describe(el, cs, pcs) {
     var tag = el.tagName.toLowerCase();
@@ -210,7 +209,7 @@
   }
   function line(out, s) { out.push(s); budget += s.length + 1; }
 
-  // ---------------------------------------------------------------- segmentation
+  // segmentation
   function blockKids(el) {
     var res = [];
     for (var i = 0; i < el.children.length; i++) {
@@ -328,7 +327,7 @@
     };
   });
 
-  // ---------------------------------------------------------------- design tokens
+  // design tokens
   var textColors = {}, bgColors = {}, btnColors = {}, fontsW = {}, sizes = {}, radii = {};
   var all = document.body.querySelectorAll('*');
   var limit = Math.min(all.length, 6000);

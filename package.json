@@ -21,7 +21,7 @@
     "express": "^4.21.2",
     "openai": "^4.100.0",
     "playwright": "1.56.0",
-    "sharp": "^0.34.1",
+    "sharp": "^0.35.5",
     "zod": "^3.24.2"
   },
   "devDependencies": {
@@ -35,5 +35,8 @@
     "tsx": "^4.19.2",
     "typescript": "~5.8.3",
     "vite": "^6.3.5"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

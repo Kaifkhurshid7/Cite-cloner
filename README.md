@@ -1,68 +1,107 @@
-# Site Cloner: AI frontend-cloning agent
+# Site Cloner
 
-Paste a public URL. The agent analyzes the page (layout, sections, navigation, text, images, colours, typography, spacing and responsive behaviour), generates a **React 19 + TypeScript + Tailwind v4** project, builds and runs it in a headless browser, repairs its own errors and shows a live local preview. You can then change the site with plain English ("make the navbar sticky", "add a testimonials section").
+An AI agent that clones the frontend of a public website. Paste a URL and it analyzes the page (layout, sections, text, images, colours, typography, spacing, responsive behaviour), generates a **React 19 + TypeScript + Tailwind v4** project, builds and runs it in a headless browser, repairs its own errors and shows a live local preview. You can then edit the result in plain English ("make the navbar sticky", "add a testimonials section").
 
-The output is a new component-based codebase. It does not embed or proxy the original site.
+The output is a new, component-based codebase. It does not embed or proxy the original site.
 
 ![architecture](docs/architecture.png)
 
-## Setup
+## Quick start
 
-Requirements: Node 20+ (tested on 22).
+**Requirements:** Node.js 20 or newer and npm. On Windows, use PowerShell or Git Bash.
 
 ```bash
-npm run setup                  # installs root deps, the generated-site template deps, and Playwright Chromium
-cp .env.example .env           # add ANTHROPIC_API_KEY (default) or OPENAI_API_KEY + LLM_PROVIDER=openai
-npm start                      # builds the studio UI → http://localhost:4000
+# 1. Install everything: root deps, the generated-site template deps and Chromium for Playwright
+npm run setup
+
+# 2. Create your config file
+#    macOS/Linux/Git Bash:  cp .env.example .env
+#    PowerShell:            Copy-Item .env.example .env
+#    then open .env and set ANTHROPIC_API_KEY (or OPENAI_API_KEY)
+
+# 3. Build the studio UI and start the server
+npm start
 ```
 
-CLI (does the same without the UI):
+Open **http://localhost:4000**, paste a URL and click **Clone**.
+
+### No API key?
+
+Leave the key empty (or set `LLM_PROVIDER=offline`) and the agent runs in offline mode. A deterministic DOM-to-JSX compiler generates the site and rule-based edits handle colours, the sticky navbar and removing sections. It costs nothing and is a good way to try the tool out.
+
+### Command line
 
 ```bash
-npm run clone  -- https://example.com --refine
+npm run clone  -- https://example.com --refine     # clone a site (--refine = visual refinement pass)
 npm run modify -- <project-id> "Change the primary color to blue"
-cd workspaces/<project-id> && npm run dev     # every generated project is a standalone Vite app
 ```
 
-Without an API key the agent runs in **offline mode**. A deterministic DOM→JSX compiler generates the site, and rule-based edits handle colours, the sticky navbar and removing sections. Offline mode is handy for smoke tests, and the compiler also serves as the safety net in AI mode. `LLM_PROVIDER=mock` runs a scripted provider that deliberately returns broken code, which exercises the repair loop in tests.
+Every clone is written to `workspaces/<project-id>/` and is a standalone Vite app:
 
-Local test sites are included: `npm run fixtures` serves `http://localhost:5055/{saas,bakery,portfolio}/`.
+```bash
+cd workspaces/<project-id>
+npm run dev
+```
 
-## Architecture
+### Try it on a local test site
+
+```bash
+npm run fixtures        # serves http://localhost:5055/{saas,bakery,portfolio}/
+```
+
+Then clone `http://localhost:5055/bakery/` from the studio or the CLI.
+
+## Configuration
+
+All settings live in `.env` (see [.env.example](.env.example)).
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `LLM_PROVIDER` | auto | `anthropic`, `openai` or `offline` (auto-detected from the key you set) |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | empty | Key for the chosen provider |
+| `ANTHROPIC_MODEL` / `ANTHROPIC_FAST_MODEL` | `claude-sonnet-4-5` / `claude-haiku-4-5` | Main (vision + codegen) and fast (repairs, edit planning) models |
+| `OPENAI_MODEL` / `OPENAI_FAST_MODEL` | `gpt-4.1` / `gpt-4.1-mini` | Same, for OpenAI |
+| `LLM_CACHE` | `true` | Cache identical LLM calls in `.cache/llm`, so re-runs are free |
+| `MAX_COST_USD` | `3` | Hard spending limit per job |
+| `CONCURRENCY` | `4` | Parallel section-generation calls |
+| `PORT` | `4000` | Studio server port |
+
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run setup` | Install all dependencies and Chromium |
+| `npm start` | Build the studio and start the server |
+| `npm run server` | Start the server without rebuilding the studio |
+| `npm run dev:studio` | Studio dev server with hot reload |
+| `npm run clone` / `npm run modify` | CLI clone and edit |
+| `npm run fixtures` | Serve the local test sites |
+| `npm run typecheck` | Type-check the project |
+
+## How it works
 
 | Stage | What happens | Code |
 |---|---|---|
-| **1. Analyze** (no LLM) | Playwright loads the page at 1440px. It dismisses cookie banners and auto-scrolls to trigger lazy content. An in-page extractor segments the page into sections: it walks down single-child wrappers, splits `main` or tall stacked blocks, detects sticky/fixed headers, merges slivers and caps the count at 18. For each section it serializes an **annotated DOM** (tags, text, flex/grid, gap, padding, colours, font size/weight, radius, borders, sizes). It also measures **design tokens** (usage-weighted colours, fonts, sizes, radii), downloads images and inline SVGs to `public/media`, looks up fonts on Google Fonts, and captures full-page plus per-section screenshots. A second 390px pass records mobile behaviour. | `src/agent/analyze/` |
-| **2. Plan** (1 vision call) | Screenshot tiles, the section outline and the measured tokens go to the model, which returns a JSON plan (theme tokens + component name/role/description/responsive notes per section). The plan is zod-validated, and a heuristic plan is used if it fails. | `generate/plan.ts` |
-| **3. Generate** (1 call per section, parallel) | Each section gets its screenshot crop, annotated DOM, tokens and the exact asset paths, and becomes one `.tsx` component. Tokens go to `src/theme.css` (Tailwind `@theme`), so global edits touch one file. `App.tsx` composes the sections, each wrapped in an error boundary. | `generate/section.ts`, `assemble.ts`, `prompts.ts` |
-| **4. Validate & repair** | Free deterministic fixes run first (unknown lucide icons → nearest real icon, `next/*` imports, absolute media paths, missing default export). Then `vite build`, then the built site runs in headless Chromium, which catches per-section runtime errors, page errors, empty renders and mobile horizontal overflow. Failing files go back to the model with their errors (fast model first, then the main model, up to 3 rounds). A module-level crash gets localized with `tsc` or by rendering sections one at a time. When the budget runs out, the failing section is swapped for its compiled fallback, so **the preview always renders**. `tsc` type errors are fixed once and the fix is reverted if it breaks the build. | `validate/` |
-| **5. Visual score / refine** | The generated site is screenshotted (desktop, mobile, per section) and pixel similarity is computed against the original. With `--refine`, the weakest sections are sent back with *original vs current* screenshots for a rewrite, which is kept only if the score improves. | `validate/visual.ts`, `clone.ts` |
-| **6. Modify** | Unambiguous requests (theme colour, sticky navbar, remove section) run on a **$0 deterministic fast path**. Everything else is two steps: a fast model picks the files to read from a manifest, then the main model returns `<file>`/`<delete>` operations. Edits go through the same validate/repair loop. Every successful edit is a snapshot (`.history/vN`) with undo, and a failed edit rolls back automatically. | `modify/` |
+| **1. Analyze** | Playwright loads the page at 1440px, dismisses cookie banners and scrolls to trigger lazy content. It splits the page into sections, serializes an annotated DOM for each, measures design tokens (colours, fonts, sizes, radii), downloads images and SVGs, and captures screenshots. A 390px pass records mobile behaviour. | `src/agent/analyze/` |
+| **2. Plan** | One vision call turns screenshots, section outline and tokens into a validated JSON plan. A heuristic plan is used if that fails. | `src/agent/generate/plan.ts` |
+| **3. Generate** | One parallel call per section produces a `.tsx` component. Tokens go to `src/theme.css` (Tailwind `@theme`). `App.tsx` composes the sections. | `src/agent/generate/` |
+| **4. Validate and repair** | Free deterministic fixes, then `vite build`, then a run in headless Chromium that catches runtime errors, empty renders and mobile overflow. Failing files go back to the model with their errors. If repair fails, the section falls back to its compiled version, so the preview always renders. | `src/agent/validate/` |
+| **5. Visual score** | The generated site is screenshotted and compared to the original. With `--refine`, the weakest sections are rewritten and kept only if the score improves. | `src/agent/validate/visual.ts` |
+| **6. Modify** | Simple requests (theme colour, sticky navbar, remove section) run on a deterministic path with no LLM. Others use two model calls and the same validate/repair loop. Every edit is a snapshot with undo, and a failed edit rolls back. | `src/agent/modify/` |
 
-**Studio** (`studio/`, React): URL input, live agent log over SSE, stage tracker, desktop/tablet/mobile preview, original vs generated side by side, per-section scores, code browser and the modification chat with undo. **Server** (`src/server/`, Express): REST + SSE. Each project has one job at a time, and the built preview is served at `/preview/<id>/`.
+The **studio** (`studio/`, React) gives you live logs, a stage tracker, desktop/tablet/mobile preview, side-by-side comparison, a code browser and an edit chat with undo. The **server** (`src/server/`, Express) exposes REST and SSE and serves previews at `/preview/<id>/`.
 
-## Technologies and models
+## Troubleshooting
 
-TypeScript everywhere · Playwright (analysis, runtime validation, screenshots) · sharp (image prep, similarity) · Vite + React 19 + Tailwind v4 + lucide-react (generated sites) · Express + SSE · zod.
-Models: Anthropic **Claude Sonnet 4.5** for vision and codegen, **Claude Haiku 4.5** for repairs and edit planning (default). OpenAI **GPT-4.1 / 4.1-mini** is supported via `LLM_PROVIDER=openai`. All model IDs can be set in `.env`.
-
-## Key decisions
-
-- **Screenshot + annotated DOM, per section.** Screenshots give visual intent. The DOM gives exact text, links, asset URLs and computed px values, which removes most guessing. Working per section keeps each prompt small, runs in parallel and isolates failures.
-- **Vite rather than Next.js for the output.** Builds take about 2 seconds, which makes a build → run → repair loop practical. All projects share one installed `node_modules` through a symlink, so creating a project takes milliseconds, with no `npm install` per clone. The components are plain React and port to Next.js unchanged.
-- **Tokens in `theme.css`.** Brand colours and fonts are Tailwind theme variables, so "change the primary colour" is a one-line, deterministic edit.
-- **Always ship something.** Every stage has a non-LLM fallback: heuristic plan, compiled sections and rollback on failed edits.
-- **Cost awareness.** Downscaled or tiled JPEG screenshots, pruned DOM (≤9k chars per section), prompt caching (static system prompts), a cheap model for repairs and planning, free sanitizer fixes before any LLM repair, the $0 edit fast path, an on-disk response cache (re-runs cost $0), a per-job `MAX_COST_USD` budget, and live token/cost accounting in the UI. A typical page is about 10–14 calls.
+- **Playwright can't find a browser:** run `npx playwright install chromium`.
+- **Server says `LLM provider: offline`:** no API key was found. Add `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` to `.env` and restart.
+- **Port 4000 is busy:** change `PORT` in `.env`.
+- **Windows:** the project's `node_modules` link uses a directory junction, so no admin rights are needed.
 
 ## Limitations
 
-- It clones a single page (the given URL), not multi-page navigation, and it doesn't replicate client-side interactivity beyond menus and toggles (carousels are rendered static, animations are dropped).
-- Canvas/WebGL content, videos and iframes become placeholders or posters. Very long pages are capped at 18 sections, with extra content merged.
-- Sites behind bot protection, logins or geo-walls may fail to load, and there is no proxy or stealth.
-- Proprietary fonts fall back to a close Google font (Inter/Georgia).
-- The similarity score is a coarse pixel metric for ranking and trend, not a perceptual truth.
-- Quality depends on the model. The offline compiler is faithful on desktop but its responsive behaviour is simpler.
-
-## With more time
-
-Multi-page crawl and routing · perceptual/SSIM + LLM-judge scoring loop · component deduplication across sections (shared `Card`, `SectionHeading`) · embeddings-based retrieval of relevant files for edits in large projects · a job queue + containerized builds for horizontal scaling · Next.js export option.
+- Clones one page, not multi-page navigation. Carousels are static and animations are dropped.
+- Canvas/WebGL, videos and iframes become placeholders. Pages are capped at 18 sections.
+- Sites behind bot protection, logins or geo-walls may not load.
+- Proprietary fonts fall back to a close Google font.
+- The similarity score is a coarse pixel metric.

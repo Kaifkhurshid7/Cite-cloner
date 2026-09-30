@@ -11,7 +11,12 @@ export interface CheckResult {
 
 function run(cmd: string, args: string[], cwd: string, timeoutMs: number): Promise<{ code: number; out: string }> {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd, shell: process.platform === 'win32', env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' } });
+    const env = { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' };
+    // .cmd shims need a shell on Windows; pass one pre-joined string (args are fixed, trusted values) to avoid Node's DEP0190 warning
+    const child =
+      process.platform === 'win32'
+        ? spawn([`"${cmd}"`, ...args].join(' '), { cwd, shell: true, env })
+        : spawn(cmd, args, { cwd, env });
     let out = '';
     child.stdout.on('data', (d) => (out += d));
     child.stderr.on('data', (d) => (out += d));

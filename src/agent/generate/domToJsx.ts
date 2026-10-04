@@ -13,6 +13,8 @@ interface Node {
   flags?: Set<string>;
   text?: string;
   children: Node[];
+  parent?: Node;
+  heavy?: boolean;
 }
 
 const KNOWN_TAGS = new Set([
@@ -64,7 +66,10 @@ export function parseDom(dom: string): Node[] {
       node = { kind: 'el', tag: m[1].toLowerCase(), attrs, flags, children: [] };
     }
     while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
-    if (stack.length) stack[stack.length - 1].node.children.push(node);
+    if (stack.length) {
+      node.parent = stack[stack.length - 1].node;
+      stack[stack.length - 1].node.children.push(node);
+    }
     else roots.push(node);
     if (node.kind === 'el') stack.push({ depth, node });
   }
@@ -107,6 +112,7 @@ function classesFor(node: Node, ctx: { role: string; isRoot: boolean }): { cls: 
     // multi-column content rows stack on mobile; nav-like rows (many small items) stay horizontal
     const heavy = !col && ctx.role !== 'header' && elKids.length >= 2 && elKids.length <= 4 && cg >= 24 &&
       elKids.some((k) => k.children.some((c) => c.kind === 'el'));
+    node.heavy = heavy;
     cls.push(col ? 'flex flex-col' : heavy ? 'flex flex-col md:flex-row' : 'flex flex-row');
     if (f.has('wrap') || (!col && (ctx.role === 'header' || elKids.length > 4))) cls.push('flex-wrap', 'gap-x-4');
     if (a.justify && JUSTIFY[a.justify]) cls.push(JUSTIFY[a.justify]);
@@ -116,11 +122,33 @@ function classesFor(node: Node, ctx: { role: string; isRoot: boolean }): { cls: 
   }
   if (f.has('grid')) {
     const cols = n(a.cols) || 1;
-    cls.push('grid', cols >= 3 ? `grid-cols-1 sm:grid-cols-2 md:grid-cols-${Math.min(cols, 12)}` : cols === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1');
+    const tr = (a.gtc ?? '').split(',').map(Number).filter((v) => v > 0);
+    if (tr.length >= 2) {
+      const min = Math.min(...tr);
+      const fr = tr.map((v) => `minmax(0,${Math.round((v / min) * 100) / 100}fr)`).join('_');
+      cls.push('grid', tr.length >= 3 ? `grid-cols-1 ${tr.length >= 4 ? 'sm:grid-cols-2 ' : ''}md:grid-cols-[${fr}]` : `grid-cols-1 md:grid-cols-[${fr}]`);
+    } else cls.push('grid', cols >= 3 ? `grid-cols-1 sm:grid-cols-2 md:grid-cols-${Math.min(cols, 12)}` : cols === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1');
     const [rg, cg] = (a.gap ?? '0/0').split('/').map(Number);
     if (rg || cg) cls.push(`gap-y-[${rg || cg}px] gap-x-[${cg}px]`);
   }
   if (f.has('sticky') || f.has('fixed')) cls.push('sticky top-0 z-50');
+  if (f.has('rel') && !f.has('sticky') && !f.has('fixed')) cls.push('relative');
+  if (f.has('clip')) cls.push('overflow-hidden');
+  if (a.gcol && /^[\w-]+\/[\w-]+$/.test(a.gcol)) cls.push(`md:[grid-column:${a.gcol}]`);
+  if (a.grow && /^[\w-]+\/[\w-]+$/.test(a.grow)) cls.push(`md:[grid-row:${a.grow}]`);
+  if (a.hfix) cls.push(`min-h-[${Math.round(n(a.hfix) * 0.7)}px] md:min-h-[${n(a.hfix)}px]`);
+  if (f.has('abs')) {
+    const z = a.z ? `z-[${a.z}]` : 'z-[1]';
+    if (f.has('inset0')) cls.push('absolute inset-0', z);
+    else cls.push('absolute', `top-[${n(a.top)}px]`, `left-[${n(a.left)}px]`, `w-[${n(a.wpx)}px] max-w-full`, n(a.hpx) && n(a.hpx) < 1200 ? `h-[${n(a.hpx)}px]` : '', z);
+  } else if (a.wp && node.parent) {
+    const w = `${a.wp}%`;
+    cls.push(node.parent.heavy ? `w-full md:w-[${w}] md:shrink` : `md:w-[${w}]`);
+  } else if (f.has('grow') && node.parent) cls.push('grow basis-0 min-w-0');
+  if (a.font) {
+    const fam = a.font.replace(/^"|"$/g, '');
+    if (fam && !/^(inherit|sans-serif|serif|system-ui)$/i.test(fam) && !/[\[\]{}"'`]/.test(fam)) cls.push(`font-[family-name:${fam.replace(/ /g, '_')}]`);
+  }
   if (a.bg) cls.push(color('bg', a.bg));
   if (a['bg-image']) {
     style.backgroundImage = `url(${a['bg-image']})`;
@@ -146,7 +174,7 @@ function classesFor(node: Node, ctx: { role: string; isRoot: boolean }): { cls: 
     cls.push(w === '1' ? 'border-b' : `border-b-[${w}px]`, c ? `border-[${c}]` : '');
   }
   if (f.has('shadow')) cls.push('shadow-lg');
-  if (a['max-w'] && tag !== 'img') cls.push(`max-w-[${n(a['max-w'])}px] w-full`);
+  if (a['max-w'] && tag !== 'img' && n(a['max-w']) >= 240) cls.push(`max-w-[${n(a['max-w'])}px]`, a.wp || f.has('abs') ? '' : 'w-full');
   if (f.has('center')) cls.push('mx-auto');
   if (a.mx) {
     const [ml, mr] = a.mx.split(' ').map(Number);
@@ -167,9 +195,11 @@ function classesFor(node: Node, ctx: { role: string; isRoot: boolean }): { cls: 
   if (a.tt === 'uppercase') cls.push('uppercase');
   if (a.ls) cls.push(`tracking-[${a.ls}]`);
   if (a.lh && a.fs) cls.push(`leading-[${(n(a.lh) / n(a.fs)).toFixed(2)}]`);
-  if (/^h[1-6]$/.test(tag)) cls.push('font-heading');
+  if (/^h[1-6]$/.test(tag) && !a.font) cls.push('font-heading');
   if (a.m) {
     const [mt, mb] = a.m.split(' ').map(Number);
+    if (mt < 0) cls.push(`-mt-[${-mt}px]`);
+    if (mb < 0) cls.push(`-mb-[${-mb}px]`);
     if (mt > 0) cls.push(mt >= 48 ? `mt-[${Math.round(mt * 0.6)}px] md:mt-[${mt}px]` : `mt-[${mt}px]`);
     if (mb > 0) cls.push(mb >= 48 ? `mb-[${Math.round(mb * 0.6)}px] md:mb-[${mb}px]` : `mb-[${mb}px]`);
   }
@@ -211,7 +241,12 @@ function emit(node: Node, depth: number, ctx: { role: string; usesIcon: { v: boo
   }
   if (tag === 'picture') {
     const img = node.children.find((c) => c.tag === 'img');
-    return img ? emit(img, depth, ctx) : '';
+    if (!img) return '';
+    // the <picture> wrapper owns the grid placement / sizing; hand it to the <img>
+    const keep = ['gcol', 'grow', 'wp', 'm'];
+    img.attrs = { ...Object.fromEntries(keep.filter((k) => a[k]).map((k) => [k, a[k]])), ...img.attrs };
+    img.parent = node.parent;
+    return emit(img, depth, ctx);
   }
   if (tag === 'video') tag = a.poster ? 'img' : 'div';
   if (!KNOWN_TAGS.has(tag)) tag = 'div';

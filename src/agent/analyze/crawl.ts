@@ -163,6 +163,54 @@ async function resolveFonts(ctx: BrowserContext, ex: Extraction): Promise<string
   return head;
 }
 
+/** Download the site's own @font-face fonts into public/fonts and return an inline <style> for index.html. */
+async function localFonts(ctx: BrowserContext, page: Page, ws: Workspace, emit: Emit): Promise<string[]> {
+  try {
+    const sheets = await page.evaluate(() => ({
+      links: Array.from(document.styleSheets).map((s) => s.href).filter((h): h is string => !!h),
+      inline: Array.from(document.querySelectorAll('style')).map((s) => s.textContent ?? ''),
+    }));
+    const css: { text: string; base: string }[] = sheets.inline.map((t) => ({ text: t, base: page.url() }));
+    await Promise.all(
+      sheets.links.slice(0, 25).map(async (href) => {
+        const r = await ctx.request.get(href, { timeout: 8000 }).catch(() => null);
+        if (r?.ok()) css.push({ text: await r.text(), base: href });
+      }),
+    );
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const { text, base } of css) {
+      for (const m of text.matchAll(/@font-face\s*\{([^}]*)\}/g)) {
+        const body = m[1];
+        const fam = body.match(/font-family:\s*["']?([^;"']+)["']?/)?.[1]?.trim();
+        const urls = [...body.matchAll(/url\(["']?([^"')]+)["']?\)/g)].map((u) => u[1]).filter((u) => !u.startsWith('data:'));
+        const src = urls.find((u) => /\.woff2?(\?|#|$)/i.test(u)) ?? urls[0];
+        if (!fam || !src || out.length >= 16) continue;
+        let abs: string;
+        try {
+          abs = new URL(src, base).href;
+        } catch {
+          continue;
+        }
+        const weight = body.match(/font-weight:\s*([^;]+)/)?.[1]?.trim() ?? '400';
+        const style = body.match(/font-style:\s*([^;]+)/)?.[1]?.trim() ?? 'normal';
+        const key = `${fam}|${weight}|${style}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const res = await ctx.request.get(abs, { timeout: 12_000 }).catch(() => null);
+        if (!res?.ok()) continue;
+        const file = `fonts/${out.length}-${fam.replace(/[^\w-]/g, '')}${path.extname(new URL(abs).pathname) || '.woff2'}`;
+        await ws.write(`public/${file}`, await res.body());
+        out.push(`@font-face{font-family:"${fam}";src:url("/${file}");font-weight:${weight};font-style:${style};font-display:swap}`);
+      }
+    }
+    if (out.length) emit({ stage: 'analyze', level: 'info', message: `Downloaded ${out.length} web fonts into public/fonts` });
+    return out.length ? [`<style>${out.join('')}</style>`] : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Stage 1: turn a URL into screenshots + structured page description + local assets. */
 export async function analyzeWebsite(url: string, ws: Workspace, emit: Emit): Promise<Analysis> {
   const browser = await launchBrowser();
@@ -174,7 +222,7 @@ export async function analyzeWebsite(url: string, ws: Workspace, emit: Emit): Pr
     await loadPage(page, url);
 
     const src = await EXTRACT_SRC;
-    const ex = (await page.evaluate(`(${src.trim()})(${JSON.stringify({ maxSections: 18, maxSectionChars: 9000 })})`)) as Extraction;
+    const ex = (await page.evaluate(`(${src.trim()})(${JSON.stringify({ maxSections: 18, maxSectionChars: config.provider === 'offline' ? 120_000 : 9000 })})`)) as Extraction;
     emit({
       stage: 'analyze',
       level: 'info',
@@ -199,7 +247,8 @@ export async function analyzeWebsite(url: string, ws: Workspace, emit: Emit): Pr
     emit({ stage: 'analyze', level: 'info', message: 'Captured full-page and per-section screenshots', data: { screenshot: 'original-desktop.jpg' } });
 
     const assetMap = await downloadAssets(ctx, ex, ws, emit);
-    const fontHead = await resolveFonts(ctx, ex);
+    const own = await localFonts(ctx, page, ws, emit);
+    const fontHead = own.length ? own : await resolveFonts(ctx, ex);
     await ctx.close();
 
     // mobile pass (for responsive intent)

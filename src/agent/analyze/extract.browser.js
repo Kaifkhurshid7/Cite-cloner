@@ -30,7 +30,12 @@
     var r = el.getBoundingClientRect();
     if (r.width === 0 && r.height === 0 && cs.overflow !== 'visible') return false;
     if (r.width === 0 && r.height === 0 && !el.children.length) return false;
-    if (r.right < -5 || r.left > VW + 5) return false; // off-canvas drawers / hidden mobile menus
+    if (r.right < -5 || r.left > VW + 5 || r.bottom < -5) return false; // off-canvas drawers / hidden mobile menus
+    if (r.width <= 2 && r.height <= 2 && cs.overflow !== 'visible') return false; // sr-only text
+    if (/rect\(\s*0(px)?[ ,]+0(px)?[ ,]+0/.test(cs.clip || '') || /inset\(\s*(50|100)%/.test(cs.clipPath || '')) return false;
+    var cls = typeof el.className === 'string' ? el.className : '';
+    if (/vjs-modal-dialog|vjs-control-bar|vjs-error-display|sr-only|visually-hidden|screen-reader/i.test(cls)) return false;
+    if (el.getAttribute('aria-hidden') === 'true' && el.matches('[role=dialog],[role=alertdialog]')) return false;
     return true;
   }
   function firstFamily(ff) {
@@ -92,6 +97,47 @@
       if (px(cs.columnGap) || px(cs.rowGap)) a.push('gap=' + px(cs.rowGap) + '/' + px(cs.columnGap));
     }
     if (cs.position === 'sticky' || cs.position === 'fixed') a.push(cs.position);
+    if (cs.display.indexOf('grid') >= 0) {
+      var tr = cs.gridTemplateColumns.split(' ').map(parseFloat).filter(function (v) { return v > 0; });
+      if (tr.length >= 2 && tr.length <= 12) a.push('gtc=' + tr.map(function (v) { return Math.round(v); }).join(','));
+    }
+    var par = el.parentElement;
+    if (par && getComputedStyle(par).display.indexOf('grid') >= 0 && cs.position !== 'absolute') {
+      var ptr = getComputedStyle(par).gridTemplateColumns.split(' ').map(parseFloat).filter(function (v) { return v > 0; });
+      var gap0 = px(getComputedStyle(par).columnGap);
+      if (cs.gridColumnStart === 'auto' && cs.gridColumnEnd === 'auto' && ptr.length > 1 && r.width > ptr[0] + gap0 + 2) {
+        var acc = ptr[0], span = 1;
+        while (span < ptr.length && r.width > acc + 2) { acc += gap0 + ptr[span]; span++; }
+        a.push('gcol=auto/span_' + span);
+      } else if (cs.gridColumnStart !== 'auto' || cs.gridColumnEnd !== 'auto') a.push('gcol=' + cs.gridColumnStart.replace(/ /g, '_') + '/' + cs.gridColumnEnd.replace(/ /g, '_'));
+      if (cs.gridRowStart !== 'auto' || cs.gridRowEnd !== 'auto') a.push('grow=' + cs.gridRowStart.replace(/ /g, '_') + '/' + cs.gridRowEnd.replace(/ /g, '_'));
+    }
+    var pcs2 = par ? getComputedStyle(par) : null;
+    if (cs.position === 'absolute' && par) {
+      var op = el.offsetParent || par;
+      var or = op.getBoundingClientRect();
+      var l0 = Math.round(r.left - or.left), t0 = Math.round(r.top - or.top);
+      var fillsX = Math.abs(r.width - or.width) < 3, fillsY = Math.abs(r.height - or.height) < 3;
+      a.push('abs');
+      a.push('top=' + t0, 'left=' + l0, 'wpx=' + Math.round(r.width), 'hpx=' + Math.round(r.height));
+      if (fillsX && fillsY && l0 === 0 && t0 === 0) a.push('inset0');
+      var zi = parseInt(cs.zIndex, 10); if (zi > 0) a.push('z=' + Math.min(zi, 60));
+    } else if (pcs2 && cs.position !== 'fixed' && cs.display.indexOf('inline') !== 0 && !/^(img|svg|picture|video|a|button|span|li|input|label|b|strong|em|i|small|h[1-6]|p)$/.test(tag)) {
+      var cw = par.clientWidth - px(pcs2.paddingLeft) - px(pcs2.paddingRight);
+      var pIsRow = pcs2.display.indexOf('flex') >= 0 && pcs2.flexDirection.indexOf('column') !== 0;
+      var pIsBlock = pcs2.display === 'block';
+      if (cw > 0 && r.width > 120 && Math.abs(r.width - cw) > 3 && (pIsRow || (pIsBlock && r.width < cw)) && el.children.length) {
+        a.push('wp=' + (Math.round((r.width / cw) * 1000) / 10));
+      }
+      if (pIsRow && parseFloat(cs.flexGrow) > 0 && !(r.width > 120 && Math.abs(r.width - cw) > 3)) a.push('grow');
+    }
+    if (cs.position === 'relative' || cs.position === 'sticky') a.push('rel');
+    if (cs.position !== 'absolute' && el.children.length && r.height > 40) {
+      var inFlow = 0;
+      for (var ci = 0; ci < el.children.length; ci++) { var ccs = getComputedStyle(el.children[ci]); if (ccs.position !== 'absolute' && ccs.position !== 'fixed' && ccs.display !== 'none') inFlow++; }
+      if (!inFlow) a.push('hfix=' + Math.round(r.height));
+    }
+    if (cs.overflow === 'hidden' && (cs.position === 'relative' || cs.position === 'absolute' || bgUrl(cs) || px(cs.borderTopLeftRadius))) a.push('clip');
     // box
     var bg = toHex(cs.backgroundColor);
     if (bg && bg !== toHex(pcs && pcs.backgroundColor)) a.push('bg=' + bg);
@@ -112,10 +158,10 @@
     else if ((ml > 0 && ml < 80) || (mr > 0 && mr < 80)) a.push('mx=' + ml + ' ' + mr);
     if (/^(section|header|footer|div)$/.test(tag) && (bu || bg) && r.height > 300 && el.children.length <= 3) a.push('min-h=' + Math.round(r.height));
     var mt = px(cs.marginTop), mb = px(cs.marginBottom);
-    if (mt > 0 || mb > 0) a.push('m=' + mt + ' ' + mb);
+    if (mt !== 0 || mb !== 0) a.push('m=' + mt + ' ' + mb);
     if (/^(a|span|b|strong|em|i|small|label|code)$/.test(tag) && (cs.display === 'block' || cs.display === 'inline-block')) a.push(cs.display);
     if (/^(ul|ol)$/.test(tag) && cs.listStyleType !== 'none') a.push('list=' + cs.listStyleType);
-    if (cs.maxWidth && cs.maxWidth !== 'none' && px(cs.maxWidth) > 0) a.push('max-w=' + px(cs.maxWidth));
+    if (/px$/.test(cs.maxWidth) && px(cs.maxWidth) > 0) a.push('max-w=' + px(cs.maxWidth));
     if (bg || bw || /^(img|svg|video|iframe|picture|canvas)$/.test(tag) || (cs.boxShadow && cs.boxShadow !== 'none'))
       a.push('size=' + Math.round(r.width) + 'x' + Math.round(r.height));
     // text style (only when it changes vs parent)
@@ -152,6 +198,8 @@
     if (cs.display.indexOf('flex') >= 0 || cs.display.indexOf('grid') >= 0) return false;
     if (toHex(cs.backgroundColor) || bgUrl(cs) || px(cs.borderTopWidth) || px(cs.paddingTop) || px(cs.paddingLeft)) return false;
     if (ownText(el)) return false;
+    if (cs.position !== 'static' || cs.overflow !== 'visible') return false;
+    if (el.parentElement && /grid|flex/.test(getComputedStyle(el.parentElement).display)) return false; // keep grid/flex items: they carry placement
     return true;
   }
 
@@ -200,7 +248,7 @@
         }
       } else if (n.nodeType === 1) {
         elementKids++;
-        if (shown >= 30) continue;
+        if (shown >= 60) continue;
         shown++;
         serialize(n, depth + 1, cs, out);
       }
